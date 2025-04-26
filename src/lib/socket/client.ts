@@ -12,15 +12,15 @@ type FetchOptions = RequestInit & {
 
 export const socketApiClient = async <T>(
   path: string,
-  { searchParams, headers, ...options }: FetchOptions = {}
+  { searchParams, headers, ...options }: FetchOptions = {},
 ): Promise<T> => {
   const url = new URL(path, API_URL);
 
   if (searchParams) {
     const params = Object.fromEntries(
       Object.entries(searchParams).filter(
-        ([_k, v]) => v !== undefined && v !== null && v !== ""
-      )
+        ([_k, v]) => v !== undefined && v !== null && v !== "",
+      ),
     ) as Record<string, string>;
     url.search = new URLSearchParams(params).toString();
   }

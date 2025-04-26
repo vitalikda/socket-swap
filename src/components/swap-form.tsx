@@ -1,5 +1,6 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowUpDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConnectButton } from "src/components/connect-button";
 import { TokenLogo } from "src/components/token-logo";
@@ -14,6 +15,7 @@ import {
 } from "src/lib/socket/api";
 import { GetQuoteParams } from "src/lib/socket/types";
 import { ethToken, usdcToken } from "src/lib/tokens";
+import { useTransactionHistory } from "src/store/use-transaction-history";
 import type { Address } from "viem";
 import {
   useAccount,
@@ -45,8 +47,8 @@ export const SwapForm = () => {
 
   const [amount, setAmount] = useState(0);
   const debouncedAmount = useDebounce(amount, 500);
-  const [tokenFrom, _setTokenFrom] = useState(ethToken);
-  const [tokenTo, _setTokenTo] = useState(usdcToken);
+  const [tokenFrom, setTokenFrom] = useState(ethToken);
+  const [tokenTo, setTokenTo] = useState(usdcToken);
 
   const { data: quote } = useQuote({
     fromChainId: fromChainId,
@@ -64,6 +66,8 @@ export const SwapForm = () => {
     const toAmount = Number(quote?.result?.routes[0]?.toAmount);
     return toAmount / 10 ** tokenTo.decimals;
   }, [quote?.result?.routes[0]?.toAmount, tokenTo.decimals]);
+
+  const addTransaction = useTransactionHistory((s) => s.addTransaction);
 
   const onSwap = async () => {
     if (!address || !publicClient) {
@@ -114,6 +118,7 @@ export const SwapForm = () => {
           // value: BigInt(0),
         });
         console.log("Approval TX Hash:", txHash);
+        addTransaction({ transactionHash: txHash, fromChainId, toChainId });
 
         return txHash;
       }
@@ -125,6 +130,7 @@ export const SwapForm = () => {
         value: BigInt(routeData.result.value),
       });
       console.log("Bridging TX Hash:", txHash);
+      addTransaction({ transactionHash: txHash, fromChainId, toChainId });
 
       return txHash;
     } catch (error) {
@@ -138,35 +144,56 @@ export const SwapForm = () => {
         e.preventDefault();
         onSwap();
       }}
-      className="flex flex-col gap-4"
+      className="flex w-full flex-col gap-4"
     >
-      <div className="flex gap-2">
-        <Input
-          value={amount}
-          onChange={(e) => setAmount(e.target.valueAsNumber)}
-          type="number"
-          className="w-full"
-        />
-        <Button variant="secondary">
-          <TokenLogo
-            src={ethToken.logoURI}
-            chainSrc="/img/chains/arb.svg"
-            className="size-6"
+      <div className="flex flex-col gap-1">
+        <div className="flex gap-2">
+          <Input
+            value={amount}
+            onChange={(e) => setAmount(e.target.valueAsNumber)}
+            type="number"
+            className="w-full"
           />
-          <span>{ethToken.symbol}</span>
-        </Button>
-      </div>
-
-      <div className="flex gap-2">
-        <Input value={quoteAmount} type="number" readOnly className="w-full" />
-        <Button variant="secondary">
-          <TokenLogo
-            src={usdcToken.logoURI}
-            chainSrc="/img/chains/arb.svg"
-            className="size-6"
+          <Button variant="secondary">
+            <TokenLogo
+              src={tokenFrom.logoURI}
+              chainSrc="/img/chains/arb.svg"
+              className="size-6"
+            />
+            <span>{tokenFrom.symbol}</span>
+          </Button>
+        </div>
+        <div className="flex items-center justify-center">
+          <Button
+            onClick={() => {
+              const from = tokenFrom;
+              const to = tokenTo;
+              setTokenFrom(to);
+              setTokenTo(from);
+              setAmount(0);
+            }}
+            variant="ghost"
+            size="icon"
+          >
+            <ArrowUpDown className="size-3 text-neutral-500" />
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={quoteAmount}
+            type="number"
+            readOnly
+            className="w-full"
           />
-          <span>{usdcToken.symbol}</span>
-        </Button>
+          <Button variant="secondary">
+            <TokenLogo
+              src={tokenTo.logoURI}
+              chainSrc="/img/chains/arb.svg"
+              className="size-6"
+            />
+            <span>{tokenTo.symbol}</span>
+          </Button>
+        </div>
       </div>
 
       {address ? (

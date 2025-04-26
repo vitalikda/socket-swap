@@ -19,7 +19,7 @@ export async function getQuote(searchParams: GetQuoteParams) {
 
 /** Makes a POST request to Bungee APIs for swap/bridge transaction data */
 export async function getRouteTransactionData(
-  route: GetRouteTransactionDataParams
+  route: GetRouteTransactionDataParams,
 ) {
   return socketApiClient<GetRouteTransactionDataResult>("/v2/build-tx", {
     method: "POST",
@@ -36,11 +36,11 @@ export async function checkAllowance(searchParams: CheckAllowanceParams) {
 
 /** Fetches transaction data for token approval */
 export async function getApprovalTransactionData(
-  searchParams: GetApprovalTransactionDataParams
+  searchParams: GetApprovalTransactionDataParams,
 ) {
   return socketApiClient<GetApprovalTransactionDataResult>(
     `/v2/approval/build-tx`,
-    { searchParams }
+    { searchParams },
   );
 }
 

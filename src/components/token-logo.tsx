@@ -41,7 +41,7 @@ export const TokenLogo = ({
           alt=""
           width={8}
           height={8}
-          className="rounded-full object-cover absolute bottom-0 right-0 w-1/2 h-1/2 min-w-2 min-h-2"
+          className="absolute right-0 bottom-0 h-1/2 min-h-2 w-1/2 min-w-2 rounded-full object-cover"
         />
       )}
     </span>

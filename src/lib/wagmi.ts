@@ -13,7 +13,7 @@ const connectors = connectorsForWallets(
   {
     appName: "My dApp",
     projectId: "YOUR_PROJECT_ID",
-  }
+  },
 );
 
 export const config = createConfig({
