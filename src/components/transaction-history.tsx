@@ -1,8 +1,9 @@
 "use client";
+import SafeApiKit from "@safe-global/api-kit";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, SquareArrowOutUpRight } from "lucide-react";
+import { BadgeCheck, Check, Copy, SquareArrowOutUpRight } from "lucide-react";
 import { Button } from "src/components/ui/button";
-import { copyToClipboard } from "src/lib/clipboard";
+import { useClipboard } from "src/hooks/use-clipboard";
 import { getBridgeStatus } from "src/lib/socket/api";
 import { shortenAddress } from "src/lib/strings";
 import {
@@ -11,18 +12,22 @@ import {
 } from "src/store/use-transaction-history";
 
 // NOTE: `getBridgeStatus` always returns `PENDING` status
-const useCheckTransactionStatus = ({ isComplete, ...props }: Transaction) => {
+const useSocketTransactionStatus = ({
+  isComplete,
+  isSafe,
+  ...props
+}: Transaction) => {
   const markTransactionComplete = useTransactionHistory(
     (s) => s.markTransactionComplete,
   );
 
   return useQuery({
-    enabled: !isComplete,
+    enabled: !isComplete && !isSafe,
     queryKey: ["transaction", "status", props],
     queryFn: async () => {
-      const status = await getBridgeStatus(props);
-      console.log("status", status.result);
-      if (status.result.destinationTxStatus !== "COMPLETED") {
+      const { result: status } = await getBridgeStatus(props);
+      console.log("status", status);
+      if (status.destinationTxStatus !== "COMPLETED") {
         throw new Error("Transaction not completed");
       }
       markTransactionComplete(props);
@@ -33,20 +38,60 @@ const useCheckTransactionStatus = ({ isComplete, ...props }: Transaction) => {
   });
 };
 
-const TransactionItem = ({ isComplete, ...props }: Transaction) => {
-  // useCheckTransactionStatus({ isComplete, ...props });
+const useSafeTransactionStatus = ({
+  isComplete,
+  isSafe,
+  ...props
+}: Transaction) => {
+  const markTransactionComplete = useTransactionHistory(
+    (s) => s.markTransactionComplete,
+  );
+
+  return useQuery({
+    enabled: !isComplete && isSafe,
+    queryKey: ["transaction", "status", "safe", props],
+    queryFn: async () => {
+      const apiKit = new SafeApiKit({
+        chainId: BigInt(props.fromChainId),
+      });
+      const signedTransaction = await apiKit.getTransaction(
+        props.transactionHash,
+      );
+      console.log("signedTransaction", signedTransaction);
+      if (signedTransaction.isExecuted) {
+        markTransactionComplete(props);
+      }
+      return signedTransaction;
+    },
+  });
+};
+
+const TransactionItem = (props: Transaction) => {
+  const { copied, copy } = useClipboard();
+  // useSocketTransactionStatus(props);
+  const { data: signedTransaction } = useSafeTransactionStatus(props);
 
   return (
     <div className="flex w-full items-center gap-2 py-1 text-sm">
-      {/* {!isComplete && <LoaderCircle className="size-4 animate-spin" />}
-      {isComplete && <BadgeCheck className="size-4 text-green-500" />} */}
-      <span>{shortenAddress({ address: props.transactionHash })} </span>
+      {/* {!props.isComplete && <LoaderCircle className="size-4 animate-spin" />} */}
+      {props.isComplete && <BadgeCheck className="size-4 text-green-500" />}
+      <span>{shortenAddress({ address: props.transactionHash })}</span>
       <button
-        onClick={() => copyToClipboard(props.transactionHash)}
+        onClick={() => copy(props.transactionHash)}
         className="size-fit cursor-pointer"
       >
-        <Copy className="size-3" />
+        {copied ? (
+          <Check className="size-3 text-green-500" />
+        ) : (
+          <Copy className="size-3" />
+        )}
       </button>
+      {!!props.isSafe && !!signedTransaction && (
+        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-500">
+          {signedTransaction.confirmations?.length ?? 0} of
+          {signedTransaction.confirmationsRequired} sigs
+        </span>
+      )}
       <Button variant="ghost" className="ml-auto" asChild>
         <a
           href={`https://arbiscan.io/tx/${props.transactionHash}`}

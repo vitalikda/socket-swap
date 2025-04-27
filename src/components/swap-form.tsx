@@ -19,7 +19,6 @@ import type {
 } from "src/lib/socket/types";
 import { ethToken, usdcToken } from "src/lib/tokens";
 import { useTransactionHistory } from "src/store/use-transaction-history";
-import type { Address } from "viem";
 import { waitForTransactionReceipt } from "viem/actions";
 import { arbitrum } from "viem/chains";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
@@ -71,8 +70,8 @@ const useSwap = () => {
 
       const transactions = [
         {
-          to: routeTxData.txTarget as Address,
-          data: routeTxData.txData as Address,
+          to: routeTxData.txTarget as `0x${string}`,
+          data: routeTxData.txData as `0x${string}`,
           value: BigInt(routeTxData.value),
         },
       ];
@@ -106,8 +105,8 @@ const useSwap = () => {
           console.log("approvalData", approvalData);
 
           transactions.unshift({
-            to: approvalData.to as Address,
-            data: approvalData.data as Address,
+            to: approvalData.to as `0x${string}`,
+            data: approvalData.data as `0x${string}`,
             value: BigInt(0),
           });
         }
@@ -119,7 +118,12 @@ const useSwap = () => {
           calls: transactions,
         });
         console.log("Batch Bridging TX:", txHash);
-        addTransaction({ transactionHash: txHash, fromChainId, toChainId });
+        addTransaction({
+          transactionHash: txHash,
+          fromChainId,
+          toChainId,
+          isSafe: true,
+        });
 
         return txHash;
       }

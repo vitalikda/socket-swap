@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 
 export type Transaction = {
   isComplete?: boolean;
+  isSafe?: boolean;
 } & GetBridgeStatusParams;
 
 export const useTransactionHistory = create<{
