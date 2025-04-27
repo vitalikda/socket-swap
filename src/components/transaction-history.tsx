@@ -1,7 +1,13 @@
 "use client";
 import SafeApiKit from "@safe-global/api-kit";
 import { useQuery } from "@tanstack/react-query";
-import { BadgeCheck, Check, Copy, SquareArrowOutUpRight } from "lucide-react";
+import {
+  BadgeCheck,
+  Check,
+  Copy,
+  LoaderCircle,
+  SquareArrowOutUpRight,
+} from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { useClipboard } from "src/hooks/use-clipboard";
 import { getBridgeStatus } from "src/lib/socket/api";
@@ -63,6 +69,7 @@ const useSafeTransactionStatus = ({
       }
       return signedTransaction;
     },
+    refetchInterval: 20_000,
   });
 };
 
@@ -73,8 +80,12 @@ const TransactionItem = (props: Transaction) => {
 
   return (
     <div className="flex w-full items-center gap-2 py-1 text-sm">
-      {/* {!props.isComplete && <LoaderCircle className="size-4 animate-spin" />} */}
-      {props.isComplete && <BadgeCheck className="size-4 text-green-500" />}
+      {/* {!props.isComplete ? ( */}
+      {!props.isComplete && props.isSafe ? (
+        <LoaderCircle className="size-4 animate-spin" />
+      ) : (
+        <BadgeCheck className="size-4 text-green-500" />
+      )}
       <span>{shortenAddress({ address: props.transactionHash })}</span>
       <button
         onClick={() => copy(props.transactionHash)}
