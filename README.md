@@ -22,10 +22,11 @@ MVP that demonstrates a token swap (USDC to ETH) on Arbitrum using [Bungee API](
 - [x] Implement a single-chain swap from USDC to ETH on Arbitrum via BungeeAPIs
 - [x] Hardcode token addresses and network for simplicity
 - [x] Allow user to input amount to swap
-- [ ] Detect if connected wallet is a Safe wallet
-- [ ] If using Safe, implement EIP-5792 batching for token approval + swap transaction
+- [x] Detect if connected wallet is a Safe wallet
+- [x] If using Safe, implement EIP-5792 batching for token approval + swap transaction
 - [x] For EOA wallets, handle approval and swap sequentially
 - [ ] Show transaction status (pending, success, failed)
+  - NOTE: `getBridgeStatus` always returns `PENDING` tx status
 - [ ] For Safe wallets, display signature collection progress
 - [x] Simple, clean UI focused on functionality
 - [ ] Provide clear instructions for setup and testing

@@ -1,6 +1,6 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowUpDown } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowUpDown, LoaderCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConnectButton } from "src/components/connect-button";
 import { TokenLogo } from "src/components/token-logo";
@@ -13,16 +13,16 @@ import {
   getQuote,
   getRouteTransactionData,
 } from "src/lib/socket/api";
-import { GetQuoteParams } from "src/lib/socket/types";
+import type {
+  GetQuoteParams,
+  GetRouteTransactionDataParams,
+} from "src/lib/socket/types";
 import { ethToken, usdcToken } from "src/lib/tokens";
 import { useTransactionHistory } from "src/store/use-transaction-history";
 import type { Address } from "viem";
-import {
-  useAccount,
-  useChainId,
-  usePublicClient,
-  useSendTransaction,
-} from "wagmi";
+import { waitForTransactionReceipt } from "viem/actions";
+import { arbitrum } from "viem/chains";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 
 const useQuote = (params: GetQuoteParams) => {
   return useQuery({
@@ -36,122 +36,170 @@ const useQuote = (params: GetQuoteParams) => {
   });
 };
 
+const useSwap = () => {
+  const publicClient = usePublicClient({ chainId: arbitrum.id });
+  const { data: walletClient } = useWalletClient();
+  const { connector } = useAccount();
+  const isSafe = useMemo(() => connector?.id === "safe", [connector?.id]);
+
+  const addTransaction = useTransactionHistory((s) => s.addTransaction);
+
+  return useMutation({
+    mutationFn: async ({
+      route,
+      fromChainId,
+      toChainId,
+      tokenAddress,
+      amount,
+    }: {
+      route: GetRouteTransactionDataParams["route"];
+      fromChainId: number;
+      toChainId: number;
+      tokenAddress: string;
+      amount: number;
+    }) => {
+      if (!publicClient || !walletClient) {
+        console.info("Required data is missing", {
+          publicClient,
+          walletClient,
+        });
+        return;
+      }
+
+      const { result: routeTxData } = await getRouteTransactionData({ route });
+      console.log("routeData", routeTxData);
+
+      const transactions = [
+        {
+          to: routeTxData.txTarget as Address,
+          data: routeTxData.txData as Address,
+          value: BigInt(routeTxData.value),
+        },
+      ];
+
+      const isNativeToken = routeTxData.approvalData === null;
+
+      if (!isNativeToken) {
+        const { allowanceTarget, minimumApprovalAmount } =
+          routeTxData.approvalData;
+        const { result: allowanceStatus } = await checkAllowance({
+          chainID: fromChainId,
+          owner: walletClient.account.address,
+          allowanceTarget,
+          tokenAddress,
+        });
+        console.log("allowanceStatus", allowanceStatus);
+
+        const allowanceValue = Number(allowanceStatus.value);
+        const isSufficientAllowance =
+          Number(minimumApprovalAmount) > allowanceValue;
+        console.log("isSufficientAllowance", isSufficientAllowance);
+
+        if (isSufficientAllowance) {
+          const { result: approvalData } = await getApprovalTransactionData({
+            chainID: fromChainId,
+            owner: walletClient.account.address,
+            allowanceTarget,
+            tokenAddress,
+            amount,
+          });
+          console.log("approvalData", approvalData);
+
+          transactions.unshift({
+            to: approvalData.to as Address,
+            data: approvalData.data as Address,
+            value: BigInt(0),
+          });
+        }
+      }
+
+      if (isSafe) {
+        const { id: txHash } = await walletClient.sendCalls({
+          account: walletClient.account,
+          calls: transactions,
+        });
+        console.log("Batch Bridging TX:", txHash);
+        addTransaction({ transactionHash: txHash, fromChainId, toChainId });
+
+        return txHash;
+      }
+
+      let txHash = "";
+
+      for (let i = 0; i < transactions.length; i++) {
+        const tx = transactions[i];
+        const sentTx = await walletClient.sendTransaction({
+          account: walletClient.account,
+          to: tx.to,
+          data: tx.data,
+          value: tx.value,
+        });
+        console.log(`Bridging TX #${i + 1}:`, sentTx);
+
+        if (i < transactions.length - 1) {
+          await waitForTransactionReceipt(publicClient, { hash: sentTx });
+          continue;
+        }
+
+        txHash = sentTx;
+      }
+
+      if (txHash) {
+        addTransaction({ transactionHash: txHash, fromChainId, toChainId });
+      }
+
+      return txHash;
+    },
+    onSuccess: (data, params) => {
+      console.log("SWAP:SUCCESS", data, params);
+    },
+    onError: (error, params) => {
+      console.log("SWAP:ERROR", error, params);
+    },
+  });
+};
+
 export const SwapForm = () => {
-  const chainId = useChainId();
-  const fromChainId = chainId;
-  const toChainId = chainId;
+  const { address, connector } = useAccount();
+  const isSafe = useMemo(() => connector?.id === "safe", [connector?.id]);
 
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
-  const { sendTransactionAsync: sendTransaction } = useSendTransaction();
+  const [fromChainId, _setFromChainId] = useState(arbitrum.id);
+  const [toChainId, _setToChainId] = useState(arbitrum.id);
 
-  const [amount, setAmount] = useState(0);
-  const debouncedAmount = useDebounce(amount, 500);
   const [tokenFrom, setTokenFrom] = useState(ethToken);
   const [tokenTo, setTokenTo] = useState(usdcToken);
+
+  const [amount, setAmount] = useState("");
+  const amountDebounced = useDebounce(Number(amount), 500);
 
   const { data: quote } = useQuote({
     fromChainId: fromChainId,
     fromTokenAddress: tokenFrom.address,
     toChainId: toChainId,
     toTokenAddress: tokenTo.address,
-    fromAmount: debouncedAmount * 10 ** tokenFrom.decimals,
-    userAddress: address ?? "0x902Cb8701A268d953A5A500556Cfd1A74D40bfDD",
+    fromAmount: amountDebounced * 10 ** tokenFrom.decimals,
+    userAddress: address ?? "0x902Cb8701A268d953A5A500556Cfd1A74D40bfDD", // note: fallback to random address for public access
     uniqueRoutesPerBridge: true,
     sort: "output",
     singleTxOnly: true,
   });
 
-  const quoteAmount = useMemo(() => {
-    const toAmount = Number(quote?.result?.routes[0]?.toAmount);
+  const amountQuote = useMemo(() => {
+    const toAmount = Number(quote?.result?.routes[0]?.toAmount || 0);
     return toAmount / 10 ** tokenTo.decimals;
   }, [quote?.result?.routes[0]?.toAmount, tokenTo.decimals]);
 
-  const addTransaction = useTransactionHistory((s) => s.addTransaction);
-
-  const onSwap = async () => {
-    if (!address || !publicClient) {
-      console.info("Required data is missing", { address, publicClient });
-      return;
-    }
-
-    try {
-      const route = quote?.result?.routes[0];
-      if (!route) throw new Error("No routes found");
-
-      const routeData = await getRouteTransactionData({ route });
-      console.log("routeData", routeData.result);
-
-      const isNativeToken = routeData.result.approvalData === null;
-
-      if (!isNativeToken) {
-        const { allowanceTarget, minimumApprovalAmount } =
-          routeData.result.approvalData;
-        const allowanceStatus = await checkAllowance({
-          chainID: fromChainId,
-          owner: address,
-          allowanceTarget,
-          tokenAddress: tokenFrom.address,
-        });
-        console.log("allowanceStatus", allowanceStatus.result);
-
-        const allowanceValue = Number(allowanceStatus.result?.value);
-        const isSufficientAllowance =
-          Number(minimumApprovalAmount) > allowanceValue;
-        console.log("isSufficientAllowance", isSufficientAllowance);
-
-        if (!isSufficientAllowance) throw new Error("Insufficient allowance");
-
-        const approvalData = await getApprovalTransactionData({
-          chainID: fromChainId,
-          owner: address,
-          allowanceTarget,
-          tokenAddress: tokenFrom.address,
-          amount,
-        });
-        console.log("approvalData", approvalData.result);
-
-        const txHash = await sendTransaction({
-          account: approvalData.result.from as Address,
-          to: approvalData.result.to as Address,
-          data: approvalData.result.data as Address,
-          // value: BigInt(0),
-        });
-        console.log("Approval TX Hash:", txHash);
-        addTransaction({ transactionHash: txHash, fromChainId, toChainId });
-
-        return txHash;
-      }
-
-      const txHash = await sendTransaction({
-        account: address,
-        to: routeData.result.txTarget as Address,
-        data: routeData.result.txData as Address,
-        value: BigInt(routeData.result.value),
-      });
-      console.log("Bridging TX Hash:", txHash);
-      addTransaction({ transactionHash: txHash, fromChainId, toChainId });
-
-      return txHash;
-    } catch (error) {
-      console.error(error);
-    }
-  };
+  const { mutate: onSwap, isPending: isSwapping, error: swapError } = useSwap();
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSwap();
-      }}
-      className="flex w-full flex-col gap-4"
-    >
+    <div className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-1">
         <div className="flex gap-2">
           <Input
             value={amount}
-            onChange={(e) => setAmount(e.target.valueAsNumber)}
-            type="number"
+            onChange={(e) => {
+              setAmount(e.target.value);
+            }}
             className="w-full"
           />
           <Button variant="secondary">
@@ -170,7 +218,7 @@ export const SwapForm = () => {
               const to = tokenTo;
               setTokenFrom(to);
               setTokenTo(from);
-              setAmount(0);
+              setAmount("");
             }}
             variant="ghost"
             size="icon"
@@ -180,8 +228,7 @@ export const SwapForm = () => {
         </div>
         <div className="flex gap-2">
           <Input
-            value={quoteAmount}
-            type="number"
+            value={amountQuote ? amountQuote.toString() : ""}
             readOnly
             className="w-full"
           />
@@ -196,13 +243,37 @@ export const SwapForm = () => {
         </div>
       </div>
 
-      {address ? (
-        <Button type="submit" disabled={!address || !quote}>
+      {!address ? (
+        <ConnectButton>Connect Wallet</ConnectButton>
+      ) : !amount ? (
+        <Button disabled>Enter Amount</Button>
+      ) : !!quote && !quote.result?.routes[0] ? (
+        <Button disabled>No swap routes found</Button>
+      ) : (
+        <Button
+          onClick={() => {
+            if (!quote) return;
+            onSwap({
+              route: quote.result.routes[0],
+              fromChainId,
+              toChainId,
+              tokenAddress: tokenFrom.address,
+              amount: Number(amount) * 10 ** tokenFrom.decimals,
+            });
+          }}
+          disabled={!quote || isSwapping}
+        >
+          {isSwapping && <LoaderCircle className="size-4 animate-spin" />}
+          {isSafe && "Propose "}
           Bridge
         </Button>
-      ) : (
-        <ConnectButton>Connect Wallet</ConnectButton>
       )}
-    </form>
+
+      {!!swapError && (
+        <p className="truncate text-sm text-red-500">
+          {swapError.message.slice(0, 100)}
+        </p>
+      )}
+    </div>
   );
 };
