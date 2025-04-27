@@ -8,6 +8,24 @@ MVP that demonstrates a token swap (USDC to ETH) on Arbitrum using [Bungee API](
 - TypeScript
 - TailwindCSS
 
+### Local Development
+
+```bash
+git clone https://github.com/vitalikda/socket-swap.git
+cd socket-swap
+pnpm install
+pnpm run dev
+```
+
+### Safe Wallet Integration
+
+1. Open the Safe app: https://app.safe.global/
+2. Open the "Apps" tab
+3. Click on the "Add My Custom App" button
+4. Paste the project's URL: `http://localhost:3000` or Vercel URL
+
+Step-by-step Guide: https://help.safe.global/en/articles/40859-add-a-custom-safe-app
+
 ## Useful Links
 
 - Integration Guide for Bungee Manual: https://docs.bungee.exchange/bungee-manual/socket-api/guides/single-tx-bridging
@@ -29,5 +47,5 @@ MVP that demonstrates a token swap (USDC to ETH) on Arbitrum using [Bungee API](
   - NOTE: `/v2/bridge-status` always returns `PENDING` tx status
 - [x] For Safe wallets, display signature collection progress
 - [x] Simple, clean UI focused on functionality
-- [ ] Provide clear instructions for setup and testing
+- [x] Provide clear instructions for setup and testing
 - [ ] Document key implementation decisions
