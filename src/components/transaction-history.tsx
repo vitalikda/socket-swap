@@ -54,7 +54,7 @@ const useSafeTransactionStatus = ({
   );
 
   return useQuery({
-    enabled: !isComplete && isSafe,
+    enabled: !isComplete && !!isSafe,
     queryKey: ["transaction", "status", "safe", props],
     queryFn: async () => {
       const apiKit = new SafeApiKit({
