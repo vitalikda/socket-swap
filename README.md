@@ -13,6 +13,7 @@ MVP that demonstrates a token swap (USDC to ETH) on Arbitrum using [Bungee API](
 ```bash
 git clone https://github.com/vitalikda/socket-swap.git
 cd socket-swap
+cp .env.template .env
 pnpm install
 pnpm run dev
 ```
